@@ -1,0 +1,78 @@
+{
+  "game": {
+    "id": "780698",
+    "ruleset": {
+      "name": "standard",
+      "version": "v.1.2.3"
+    },
+    "timeout": 500
+  },
+  "turn": 200,
+  "you": {
+    "health": 100,
+    "id": "you",
+    "name": "#22aa34",
+    "body": [
+      {
+        "x": 1,
+        "y": 0
+      },
+      {
+        "x": 0,
+        "y": 0
+      }
+    ],
+    "head": {
+      "x": 1,
+      "y": 0
+    },
+    "length": 2
+  },
+  "board": {
+    "food": [],
+    "height": 3,
+    "width": 3,
+    "snakes": [
+      {
+        "health": 100,
+        "id": "you",
+        "name": "#22aa34",
+        "body": [
+          {
+            "x": 1,
+            "y": 0
+          },
+          {
+            "x": 0,
+            "y": 0
+          }
+        ],
+        "head": {
+          "x": 1,
+          "y": 0
+        },
+        "length": 2
+      },
+      {
+        "health": 100,
+        "id": "#FFf48a",
+        "name": "#FFf48a",
+        "body": [
+          {
+            "x": 1,
+            "y": 2
+          },
+          {
+            "x": 2,
+            "y": 2
+          }
+        ],
+        "head": {
+          "x": 1,
+          "y": 2
+        },
+        "length": 2
+      }
+    ]
+  }
+}

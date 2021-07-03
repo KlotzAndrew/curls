@@ -14,7 +14,8 @@ func TestNextMove(t *testing.T) {
 		file string
 		move models.Move
 	}{
-		{"sample_move.json", models.Up},
+		// {"sample_move.json", models.Up},
+		{"tiny_move.json", models.Down},
 	}
 
 	for _, tt := range tests {
