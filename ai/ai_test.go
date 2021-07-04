@@ -15,7 +15,8 @@ func TestNextMove(t *testing.T) {
 		move models.Move
 	}{
 		// {"sample_move.json", models.Up},
-		{"tiny_move.json", models.Down},
+		// {"tiny_move.json", models.Up},
+		{"small_spin.json", models.Up},
 	}
 
 	for _, tt := range tests {

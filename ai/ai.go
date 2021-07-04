@@ -2,11 +2,15 @@ package ai
 
 import (
 	"curls/models"
-	"fmt"
-	"math"
 )
 
 var directions = []vertex{{1, 0}, {0, 1}, {-1, 0}, {0, -1}}
+
+const (
+	costBody  = 100_000
+	costTail  = 200
+	costSpace = 100
+)
 
 type vertex [2]int
 
@@ -15,129 +19,152 @@ type route struct {
 	previous vertex
 }
 
-func NextMove(game models.GameRequest) models.MoveResponse {
-	size := game.Board.Height
+type matrix [][]int
 
-	// previous + cost
-	visited := map[vertex]bool{}
-
-	costTable := map[vertex]route{}
-
+func newMatrix(size int) matrix {
 	matrix := make([][]int, size)
 	for i := 0; i < size; i++ {
 		matrix[i] = make([]int, size)
 	}
 	for y := range matrix {
 		for x := range matrix[0] {
-			matrix[y][x] = 100
+			matrix[y][x] = costSpace
 		}
 	}
 
-	you := game.You
-	for _, coord := range you.Body {
-		matrix[coord.Y][coord.X] = math.MaxInt64
+	return matrix
+}
+
+func (m *matrix) set(y, x, v int) {
+	size := len(*m) - 1
+	(*m)[size-y][x] = v
+}
+
+func (m *matrix) get(y, x int) int {
+	size := len(*m) - 1
+	return (*m)[size-y][x]
+}
+
+func (m *matrix) addSnake(snake models.Battlesnake) {
+	for _, coord := range snake.Body {
+		m.set(coord.Y, coord.X, costBody)
 	}
+	head := snake.Head
+	m.set(head.Y, head.X, costBody)
+}
+
+func (m *matrix) addTail(you models.Battlesnake) {
+	tail := you.Body[len(you.Body)-1]
+	m.set(tail.Y, tail.X, costTail)
+}
+
+func NextMove(game models.GameRequest) models.MoveResponse {
+	size := game.Board.Height
+	boardMatrix := newMatrix(size)
+
+	for _, snake := range game.Board.Snakes {
+		boardMatrix.addSnake(snake)
+	}
+	you := game.You
 	head := you.Head
-	matrix[head.Y][head.X] = math.MaxInt64
+	boardMatrix.addTail(you)
 
 	tail := you.Body[len(you.Body)-1]
 	tailVertex := vertex{tail.Y, tail.X}
-	matrix[tail.Y][tail.X] = 100
+	headVertex := vertex{head.Y, head.X}
 
-	snakes := game.Board.Snakes
-	for _, snake := range snakes {
-		if snake.ID == you.ID {
-			continue
-		}
+	costTable := buildCostTable(boardMatrix, size, headVertex, tailVertex)
 
-		for _, coord := range snake.Body {
-			matrix[coord.Y][coord.X] = math.MaxInt64
-		}
-		head := snake.Head
-		matrix[head.Y][head.X] = math.MaxInt64
-	}
+	moveVertex := moveTo(costTable, tailVertex)
 
+	direction := getDirection(headVertex, moveVertex)
+	return models.MoveResponse{Move: direction, Shout: ""}
+}
+
+func buildCostTable(boardMatrix matrix, size int, headVertex, tailVertex vertex) map[vertex]route {
 	queue := []vertex{}
-	currentVertex := vertex{head.Y, head.X}
+	currentVertex := headVertex
 
+	costTable := map[vertex]route{}
 	costTable[currentVertex] = route{cost: 101, previous: currentVertex}
+	visited := map[vertex]bool{}
 
 	queue = append(queue, currentVertex)
 
 	firstMove := true
-
 	for len(queue) > 0 {
 		currentVertex, queue = queue[len(queue)-1], queue[:len(queue)-1]
 		currentRoute := costTable[currentVertex]
+
+		if visited[currentVertex] {
+			continue
+		}
 		visited[currentVertex] = true
 
 		for _, dir := range directions {
 			nextVertex := vertex{currentVertex[0] + dir[0], currentVertex[1] + dir[1]}
-			if !valid(matrix, visited, size, nextVertex) {
-				continue
-			}
-			if firstMove && nextVertex == tailVertex {
+			if (firstMove && nextVertex == tailVertex) || !valid(boardMatrix, size, nextVertex) {
 				continue
 			}
 
-			matrixCost := matrix[nextVertex[0]][nextVertex[1]]
-			nextCost := currentRoute.cost + matrixCost
-			if currentRoute.cost == 0 {
-				fmt.Println(costTable)
-				panic(2)
-			}
+			nextCost := currentRoute.cost + boardMatrix.get(nextVertex[0], nextVertex[1])
 			nextRoute, found := costTable[nextVertex]
 			if !found {
 				costTable[nextVertex] = route{cost: nextCost, previous: currentVertex}
-			} else {
-
-				if nextCost < nextRoute.cost {
-					nextRoute.cost = nextCost
-					nextRoute.previous = currentVertex
-					costTable[nextVertex] = nextRoute
-
-				} else {
-					fmt.Println(costTable)
-				}
+			} else if nextCost < nextRoute.cost {
+				nextRoute.cost = nextCost
+				nextRoute.previous = currentVertex
+				costTable[nextVertex] = nextRoute
 			}
-
 			queue = append(queue, nextVertex)
 		}
 
 		firstMove = false
 	}
 
-	// fmt.Println(matrix)
-	for k, v := range costTable {
-		fmt.Println(k, v)
-	}
-
-	headVertex := vertex{head.Y, head.X}
-	path := []vertex{tailVertex}
-	for tailVertex != headVertex {
-		route, found := costTable[tailVertex]
-		if !found {
-			panic("not found")
-		}
-		path = append(path, route.previous)
-		tailVertex = route.previous
-	}
-	fmt.Println("path from to", path, headVertex, tail)
-
-	return models.MoveResponse{Move: models.Up, Shout: ""}
+	return costTable
 }
 
-func valid(matrix [][]int, visited map[vertex]bool, size int, nextVertex vertex) bool {
+func moveTo(costTable map[vertex]route, v vertex) vertex {
+	path := pathTo(costTable, v)
+	return path[len(path)-2] // most recent element is the head
+}
+
+func pathTo(costTable map[vertex]route, v vertex) []vertex {
+	current := v
+	path := []vertex{current}
+	for {
+		route := costTable[current]
+		if current == route.previous {
+			break
+		}
+		path = append(path, route.previous)
+		current = route.previous
+	}
+
+	return path
+}
+
+func valid(matrix [][]int, size int, nextVertex vertex) bool {
 	if nextVertex[0] < 0 || nextVertex[1] < 0 || nextVertex[0] >= size || nextVertex[1] >= size {
 		return false
 	}
 
-	if visited[nextVertex] {
-		return false
-	}
-	if matrix[nextVertex[0]][nextVertex[1]] == math.MaxInt64 {
+	if matrix[nextVertex[0]][nextVertex[1]] >= costBody {
 		return false
 	}
 
 	return true
+}
+
+func getDirection(headVertex, moveVertex vertex) models.Move {
+	if moveVertex[0] < headVertex[0] {
+		return models.Down
+	} else if moveVertex[0] > headVertex[0] {
+		return models.Up
+	} else if moveVertex[1] < headVertex[1] {
+		return models.Left
+	} else {
+		return models.Right
+	}
 }
