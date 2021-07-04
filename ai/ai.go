@@ -2,14 +2,17 @@ package ai
 
 import (
 	"curls/models"
+	"math"
 )
 
 var directions = []vertex{{1, 0}, {0, 1}, {-1, 0}, {0, -1}}
 
 const (
-	costBody  = 100_000
-	costTail  = 200
-	costSpace = 100
+	costInfinite = math.MaxInt64
+	costBody     = 100_000
+	costTail     = 200
+	costSpace    = 100
+	costHead     = 10
 )
 
 type vertex [2]int
@@ -62,38 +65,44 @@ func NextMove(game models.GameRequest) models.MoveResponse {
 	size := game.Board.Height
 	boardMatrix := newMatrix(size)
 
+	for _, food := range game.Board.Food {
+		boardMatrix.set(food.Y, food.X, size*size*costSpace*10+7)
+	}
+
 	for _, snake := range game.Board.Snakes {
 		boardMatrix.addSnake(snake)
 	}
 	you := game.You
-	head := you.Head
 	boardMatrix.addTail(you)
 
+	head := you.Head
 	tail := you.Body[len(you.Body)-1]
 	tailVertex := vertex{tail.Y, tail.X}
 	headVertex := vertex{head.Y, head.X}
 
 	costTable := buildCostTable(boardMatrix, size, headVertex, tailVertex)
 
-	moveVertex := moveTo(costTable, tailVertex)
+	moveVertex, _, _ := moveTo(costTable, tailVertex)
 
 	direction := getDirection(headVertex, moveVertex)
 	return models.MoveResponse{Move: direction, Shout: ""}
 }
 
 func buildCostTable(boardMatrix matrix, size int, headVertex, tailVertex vertex) map[vertex]route {
-	queue := []vertex{}
 	currentVertex := headVertex
 
 	costTable := map[vertex]route{}
-	costTable[currentVertex] = route{cost: 101, previous: currentVertex}
+	for y := range boardMatrix {
+		for x := range boardMatrix[0] {
+			costTable[[2]int{y, x}] = route{cost: costInfinite}
+		}
+	}
+	costTable[currentVertex] = route{cost: costHead, previous: currentVertex}
 	visited := map[vertex]bool{}
 
-	queue = append(queue, currentVertex)
-
 	firstMove := true
-	for len(queue) > 0 {
-		currentVertex, queue = queue[len(queue)-1], queue[:len(queue)-1]
+	for len(visited) < size*size-1 {
+		currentVertex = nextUnvisitedVertex(costTable, visited)
 		currentRoute := costTable[currentVertex]
 
 		if visited[currentVertex] {
@@ -108,15 +117,12 @@ func buildCostTable(boardMatrix matrix, size int, headVertex, tailVertex vertex)
 			}
 
 			nextCost := currentRoute.cost + boardMatrix.get(nextVertex[0], nextVertex[1])
-			nextRoute, found := costTable[nextVertex]
-			if !found {
-				costTable[nextVertex] = route{cost: nextCost, previous: currentVertex}
-			} else if nextCost < nextRoute.cost {
+			nextRoute := costTable[nextVertex]
+			if nextCost < nextRoute.cost {
 				nextRoute.cost = nextCost
 				nextRoute.previous = currentVertex
 				costTable[nextVertex] = nextRoute
 			}
-			queue = append(queue, nextVertex)
 		}
 
 		firstMove = false
@@ -125,12 +131,25 @@ func buildCostTable(boardMatrix matrix, size int, headVertex, tailVertex vertex)
 	return costTable
 }
 
-func moveTo(costTable map[vertex]route, v vertex) vertex {
-	path := pathTo(costTable, v)
-	return path[len(path)-2] // most recent element is the head
+func nextUnvisitedVertex(costTable map[vertex]route, visited map[vertex]bool) vertex {
+	cost := costInfinite
+	var next vertex
+	for k, v := range costTable {
+		if !visited[k] && v.cost <= cost {
+			next = k
+			cost = v.cost
+		}
+	}
+	return next
 }
 
-func pathTo(costTable map[vertex]route, v vertex) []vertex {
+func moveTo(costTable map[vertex]route, v vertex) (vertex, int, int) {
+	path, cost := pathTo(costTable, v)
+	return path[len(path)-2], cost, len(path) // most recent element is the head
+}
+
+func pathTo(costTable map[vertex]route, v vertex) ([]vertex, int) {
+	cost := 0
 	current := v
 	path := []vertex{current}
 	for {
@@ -140,17 +159,14 @@ func pathTo(costTable map[vertex]route, v vertex) []vertex {
 		}
 		path = append(path, route.previous)
 		current = route.previous
+		cost += route.cost
 	}
 
-	return path
+	return path, cost
 }
 
-func valid(matrix [][]int, size int, nextVertex vertex) bool {
+func valid(boardMatrix matrix, size int, nextVertex vertex) bool {
 	if nextVertex[0] < 0 || nextVertex[1] < 0 || nextVertex[0] >= size || nextVertex[1] >= size {
-		return false
-	}
-
-	if matrix[nextVertex[0]][nextVertex[1]] >= costBody {
 		return false
 	}
 
