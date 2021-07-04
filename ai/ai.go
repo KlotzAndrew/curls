@@ -9,10 +9,11 @@ var directions = []vertex{{1, 0}, {0, 1}, {-1, 0}, {0, -1}}
 
 const (
 	costInfinite = math.MaxInt64
-	costBody     = 100_000
+	costBody     = 1_000_000
 	costTail     = 200
 	costSpace    = 100
 	costHead     = 10
+	costFood     = 100_000
 )
 
 type vertex [2]int
@@ -66,7 +67,7 @@ func NextMove(game models.GameRequest) models.MoveResponse {
 	boardMatrix := newMatrix(size)
 
 	for _, food := range game.Board.Food {
-		boardMatrix.set(food.Y, food.X, size*size*costSpace*10+7)
+		boardMatrix.set(food.Y, food.X, costFood)
 	}
 
 	for _, snake := range game.Board.Snakes {
@@ -83,6 +84,17 @@ func NextMove(game models.GameRequest) models.MoveResponse {
 	costTable := buildCostTable(boardMatrix, size, headVertex, tailVertex)
 
 	moveVertex, _, _ := moveTo(costTable, tailVertex)
+
+	foodCost := costInfinite
+	for _, food := range game.Board.Food {
+		foodVertex := vertex{food.Y, food.X}
+		foodMove, cost, distance := moveTo(costTable, foodVertex)
+
+		if ((int(you.Health) - distance) <= 4) && (cost < foodCost*3) && (cost < foodCost) {
+			moveVertex = foodMove
+			foodCost = cost
+		}
+	}
 
 	direction := getDirection(headVertex, moveVertex)
 	return models.MoveResponse{Move: direction, Shout: ""}
